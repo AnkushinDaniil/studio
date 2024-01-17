@@ -1,13 +1,42 @@
-# Sample Hardhat Project
+# Studio project
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
+This project allows masters to book time slots in the studio.
 
-Try running some of the following tasks:
+## Installation
 
-```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.js
+```bash
+git clone https://github.com/AnkushinDaniil/studio.git
+yarn install
 ```
+
+## Testing
+
+localhost:
+
+```bash
+hh test
+```
+
+sepolia:
+
+```bash
+hh test --network sepolia
+```
+
+## Node
+
+localhost:
+
+```bash
+hh node
+```
+
+## Contributing
+
+Pull requests are welcome. For significant changes, please open an issue initially to discuss what alterations you plan to make.
+
+Kindly ensure to update tests as needed.
+
+## License
+
+[MIT](https://choosealicense.com/licenses/mit/)
