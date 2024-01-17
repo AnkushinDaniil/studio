@@ -1,7 +1,11 @@
 const { network, ethers, deployments } = require("hardhat")
+const { time } = require("@nomicfoundation/hardhat-network-helpers")
 const { developmentChains, networkConfig } = require("../../helper-hardhat-config")
 const { expect } = require("chai")
 // const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs")
+
+const SECONDS_PER_HOUR = 60 * 60
+const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
 
 !developmentChains.includes(network.name)
     ? describe.skip
@@ -16,11 +20,12 @@ const { expect } = require("chai")
               maxScheduleHour,
               maxNumberOfMasters,
               mockV3Aggregator,
-              priceFeedAddress
+              priceFeedAddress,
+              currentTimestamp
           beforeEach(async () => {
               ;[deployer, otherAccount] = await ethers.getSigners()
               await deployments.fixture(["studio", "mocks"])
-              studio = await ethers.getContract("Studio")
+              studio = await ethers.getContract("Studio", deployer)
               studioAddress = await studio.getAddress()
               chainId = network.config.chainId
               ethUsdPriceFeedAddress = networkConfig[chainId]["usdEthPriceFeed"]
@@ -30,6 +35,7 @@ const { expect } = require("chai")
               maxNumberOfMasters = networkConfig[chainId]["maxNumberOfMasters"]
 
               mockV3Aggregator = await ethers.getContract("MockV3Aggregator", deployer)
+              currentTimestamp = await time.latest()
           })
           describe("constructor", () => {
               it("Should set the right price feed", async () => {
@@ -52,5 +58,80 @@ const { expect } = require("chai")
               it("Should set the right max number of masters", async () => {
                   expect(await studio.getMaxNumberOfMasters()).to.equal(maxNumberOfMasters)
               })
+          })
+          describe("bookTimeGap", () => {
+              it("Should revert if timestamps are invalid", async () => {
+                  const tests = [
+                      [
+                          currentTimestamp - 5 * SECONDS_PER_HOUR,
+                          currentTimestamp - 2 * SECONDS_PER_HOUR,
+                      ],
+                      [
+                          currentTimestamp - 2 * SECONDS_PER_HOUR,
+                          currentTimestamp + 2 * SECONDS_PER_HOUR,
+                      ],
+                      [
+                          currentTimestamp + 2 * SECONDS_PER_HOUR,
+                          currentTimestamp - 2 * SECONDS_PER_HOUR,
+                      ],
+                  ]
+                  for (const timestamps of tests) {
+                      expect(
+                          studio.bookTimeGap(timestamps[0], timestamps[1])
+                      ).to.be.revertedWithCustomError(studio, "Studio__InvalidTimestamps")
+                  }
+              })
+              it("Should revert if hours are invalid", async () => {
+                  const roundTimestamp =
+                      currentTimestamp - (currentTimestamp % SECONDS_PER_DAY) + SECONDS_PER_DAY
+                  const minScheduleTimestamp = roundTimestamp + minScheduleHour
+                  const maxScheduleTimestamp = roundTimestamp + maxScheduleHour
+
+                  const tests = [
+                      [
+                          minScheduleTimestamp - 2 * SECONDS_PER_HOUR,
+                          maxScheduleTimestamp - 2 * SECONDS_PER_HOUR,
+                      ],
+                      [
+                          minScheduleTimestamp + 2 * SECONDS_PER_HOUR,
+                          maxScheduleTimestamp + 2 * SECONDS_PER_HOUR,
+                      ],
+                      [
+                          minScheduleTimestamp - 2 * SECONDS_PER_HOUR,
+                          maxScheduleTimestamp + 2 * SECONDS_PER_HOUR,
+                      ],
+                  ]
+                  for (const timestamps of tests) {
+                      expect(
+                          studio.bookTimeGap(timestamps[0], timestamps[1])
+                      ).to.be.revertedWithCustomError(studio, "Studio__InvalidTime")
+                  }
+              })
+              //   it("Should revert if not enough money", async () => {
+              //       const roundTimestamp =
+              //           currentTimestamp - (currentTimestamp % SECONDS_PER_DAY) + SECONDS_PER_DAY
+              //       const minScheduleTimestamp = roundTimestamp + minScheduleHour
+              //       const maxScheduleTimestamp = roundTimestamp + maxScheduleHour
+
+              //       const tests = [
+              //           [
+              //               minScheduleTimestamp - 2 * SECONDS_PER_HOUR,
+              //               maxScheduleTimestamp - 2 * SECONDS_PER_HOUR,
+              //           ],
+              //           [
+              //               minScheduleTimestamp + 2 * SECONDS_PER_HOUR,
+              //               maxScheduleTimestamp + 2 * SECONDS_PER_HOUR,
+              //           ],
+              //           [
+              //               minScheduleTimestamp - 2 * SECONDS_PER_HOUR,
+              //               maxScheduleTimestamp + 2 * SECONDS_PER_HOUR,
+              //           ],
+              //       ]
+              //       for (const timestamps of tests) {
+              //           expect(
+              //               studio.bookTimeGap(timestamps[0], timestamps[1])
+              //           ).to.be.revertedWithCustomError(studio, "Studio__InvalidTime")
+              //       }
+              //   })
           })
       })
