@@ -10,25 +10,50 @@ error Studio__InvalidTimestamps();
 error Studio__TooManyMasters();
 error Studio__CallFailed();
 
+/**
+ * @title Studio Booking Smart Contract.
+ * @author Daniil Ankushin.
+ * @notice This smart contract allows users to book time slots in the owner's studio.
+ * @dev This contract can be adapted for other types of bookings.
+ * @custom:developement This contract is in the development stage.
+ */
 contract Studio {
+    /**
+     *
+     * @param master The address of the master who sent the transaction.
+     * @param fromTimestamp The start time of the planned session in seconds (UTC).
+     * @param toTimestamp The end time of the planned session in seconds (UTC).
+     */
     event TimeSlotBooked(
         address indexed master,
         uint256 indexed fromTimestamp,
         uint256 indexed toTimestamp
     );
 
+    /**
+     * @notice Pionts is the point location of the session: start or end.
+     */
     enum Pionts {
         start,
         finish
     }
 
+    /**
+     * @notice TimestampWithMaster is a struct that merges a specific timestamp
+     * @notice with its master and relates it to a session.
+     */
     struct TimestampWithMaster {
         uint256 timestamp;
         address master;
         Pionts point;
     }
 
-    mapping(uint256 => TimestampWithMaster[]) public s_dateToTimestampsWithMaster;
+    /**
+     * @notice The 's_dateToTimestampsWithMaster' map converts the abstract data
+     * @notice type 'date' to 'TimestampWithMaster'. The 'date' format is
+     * @notice a concatenation of the day, month, and year in the format DDMMYYYY.
+     */
+    mapping(uint256 => TimestampWithMaster[]) private s_dateToTimestampsWithMaster;
 
     address private immutable i_owner;
     AggregatorV3Interface private s_priceFeed;
@@ -64,6 +89,11 @@ contract Studio {
         s_maxNumberOfMasters = maxNumberOfMasters;
     }
 
+    /**
+     * @notice The bookTimeGap function enables users to reserve a time slot at the studio.
+     * @param fromTimestamp The start time of the planned session in seconds (UTC).
+     * @param toTimestamp The end time of the planned session in seconds (UTC).
+     */
     function bookTimeGap(uint256 fromTimestamp, uint256 toTimestamp) public payable {
         if (!isValidTimestamps(fromTimestamp, toTimestamp)) {
             revert Studio__InvalidTimestamps();
@@ -75,16 +105,12 @@ contract Studio {
         (uint256 year, uint256 month, uint256 day) = DateTime.timestampToDate(fromTimestamp);
         uint256 date = yearMonthDayToDate(year, month, day);
 
-        TimestampWithMaster[2] memory timeSlot = [
-            TimestampWithMaster({
-                master: msg.sender,
-                timestamp: fromTimestamp,
-                point: Pionts.start
-            }),
-            TimestampWithMaster({master: msg.sender, timestamp: toTimestamp, point: Pionts.finish})
-        ];
+        TimestampWithMaster[2] memory timeSlot = createTimeSlot(
+            fromTimestamp,
+            toTimestamp,
+            msg.sender
+        );
 
-        // TimestampWithMaster[] memory dayScheduleOld = s_dateToTimestampsWithMaster[date];
         insertTimeSlot(date, s_dateToTimestampsWithMaster[date], timeSlot, s_maxNumberOfMasters);
 
         if (msg.value > price) {}
@@ -96,6 +122,13 @@ contract Studio {
         emit TimeSlotBooked(msg.sender, fromTimestamp, toTimestamp);
     }
 
+    /**
+     * @notice The insertTimeSlot function is a particular case of the 'merge sorted arrays' algorithm.
+     * @param date The 'date' format is a concatenation of the day, month, and year in the format DDMMYYYY.
+     * @param daySchedule is an array of TimestampWithMaster for the requested date.
+     * @param timeSlot is an array of TimestampWithMaster objects for the planned session. The array always contains 2 objects.
+     * @param maxNumberOfMasters represents the maximum number of masters allowed in the studio at any given time.
+     */
     function insertTimeSlot(
         uint256 date,
         TimestampWithMaster[] memory daySchedule,
@@ -104,9 +137,11 @@ contract Studio {
     ) internal {
         s_dateToTimestampsWithMaster[date].push();
         s_dateToTimestampsWithMaster[date].push();
+
         uint256 mastersCounter;
         uint256 n = 2;
         uint256 m = daySchedule.length;
+
         while (n > 0 && m > 0) {
             if (daySchedule[m + n - 1].point == Pionts.finish) {
                 mastersCounter++;
@@ -130,28 +165,58 @@ contract Studio {
         }
     }
 
+    /**
+     * @notice The getPrice function returns the exchange rate between Ethereum and US dollars.
+     * @param priceFeed releases AggregatorV3Interface with the address of the price feed smart contract.
+     */
     function getPrice(AggregatorV3Interface priceFeed) internal view returns (uint256) {
         (, int256 answer, , , ) = priceFeed.latestRoundData();
         return uint256(answer * 1e10); // 1* 10 ** 10 == 10_000_000_000
     }
 
-    function ethToUsd(uint256 ethAmount, uint256 ethPrice) internal pure returns (uint256) {
-        uint256 ethAmountInUsd = (ethPrice * ethAmount) / 1e18;
-        return ethAmountInUsd;
-    }
-
-    function usdToEth(uint256 usdAmount, uint256 usdInEth) internal pure returns (uint256) {
+    /**
+     * @notice The usdToWei function converts USD to ETH.
+     * @param usdAmount USD amount to be converted into ETH.
+     * @param usdInEth ETH/USD exchange rate.
+     */
+    function usdToWei(uint256 usdAmount, uint256 usdInEth) internal pure returns (uint256) {
         uint256 ethAmountInUsd = usdAmount / (usdInEth / 1e18);
         return ethAmountInUsd;
     }
 
+    /**
+     * @notice The calculatePrice function determines the necessary amount of wei to book the requested time slot.
+     * @param diffSeconds Session length in seconds.
+     */
     function calculatePrice(uint256 diffSeconds) public view returns (uint256) {
         uint256 priceUsd = s_pricePerSecond * diffSeconds;
         uint256 usdInEth = getPrice(s_priceFeed);
-        uint256 priceWei = usdToEth(priceUsd, usdInEth);
+        uint256 priceWei = usdToWei(priceUsd, usdInEth);
         return priceWei;
     }
 
+    /**
+     * @notice The createTimeSlot function generates TimestampWithMaster[2] to be included in s_dateToTimestampsWithMaster.
+     * @param fromTimestamp The start time of the planned session in seconds (UTC).
+     * @param toTimestamp The end time of the planned session in seconds (UTC).
+     * @param master The address of the master who sent the transaction.
+     */
+    function createTimeSlot(
+        uint256 fromTimestamp,
+        uint256 toTimestamp,
+        address master
+    ) internal pure returns (TimestampWithMaster[2] memory) {
+        return [
+            TimestampWithMaster({master: master, timestamp: fromTimestamp, point: Pionts.start}),
+            TimestampWithMaster({master: master, timestamp: toTimestamp, point: Pionts.finish})
+        ];
+    }
+
+    /**
+     * @notice The isValidHours function checks the validity of a time slot in relation to a schedule.
+     * @param fromHour The studio's opening hour has been approved by the owner.
+     * @param toHour The studio's closing hour has been approved by the owner.
+     */
     function isValidHours(uint256 fromHour, uint256 toHour) public view returns (bool) {
         return fromHour < toHour && fromHour >= s_minScheduleHour && toHour <= s_maxScheduleHour;
     }
@@ -166,21 +231,6 @@ contract Studio {
             fromTimestamp < toTimestamp &&
             DateTime.diffHours(fromTimestamp, toTimestamp) < 24;
     }
-
-    // function getScheduleFromYear(uint256 year) public view returns (string memory) {
-    //     string memory res;
-
-    //     return res;
-    // }
-
-    // function getScheduleFromYearAndMonth(
-    //     uint256 year,
-    //     uint256 month
-    // ) public view returns (string memory) {
-    //     string memory res;
-
-    //     return res;
-    // }
 
     function yearMonthDayToDate(
         uint256 year,
@@ -197,17 +247,6 @@ contract Studio {
     ) public view returns (TimestampWithMaster[] memory) {
         return s_dateToTimestampsWithMaster[yearMonthDayToDate(year, month, day)];
     }
-
-    // function getScheduleFromDateAndHour(
-    //     uint256 year,
-    //     uint256 month,
-    //     uint256 day,
-    //     uint256 hour
-    // ) public view returns (string memory) {
-    //     string memory res;
-    //     // res = string.concat('{"',string(hour),'" :}');
-    //     return res;
-    // }
 
     function getOwner() public view returns (address) {
         return i_owner;
