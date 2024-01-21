@@ -12,30 +12,34 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
     : describe("Studio unit tests", () => {
           let studio,
               studioAddress,
-              deployer,
+              accounts,
               chainId,
               ethUsdPriceFeedAddress,
               pricePerHour,
+              weiPerHour,
               minScheduleHour,
               maxScheduleHour,
               maxNumberOfMasters,
-              mockV3Aggregator,
-              priceFeedAddress,
-              currentTimestamp
+              mockV3Aggregator
           beforeEach(async () => {
-              ;[deployer, otherAccount] = await ethers.getSigners()
+              accounts = await ethers.getSigners()
               await deployments.fixture(["studio", "mocks"])
-              studio = await ethers.getContract("Studio", deployer)
+
+              studio = await ethers.getContract("Studio", accounts[0])
+              mockV3Aggregator = await ethers.getContract("MockV3Aggregator", accounts[0])
+              const usdInEth = (await mockV3Aggregator.latestRoundData())[1] * BigInt(1e10)
+
               studioAddress = await studio.getAddress()
               chainId = network.config.chainId
               ethUsdPriceFeedAddress = networkConfig[chainId]["usdEthPriceFeed"]
-              pricePerHour = networkConfig[chainId]["pricePerHour"]
-              minScheduleHour = networkConfig[chainId]["minScheduleHour"]
-              maxScheduleHour = networkConfig[chainId]["maxScheduleHour"]
-              maxNumberOfMasters = networkConfig[chainId]["maxNumberOfMasters"]
+              pricePerHour = BigInt(networkConfig[chainId]["pricePerHour"])
+              weiPerHour = (pricePerHour * BigInt(1e18)) / (usdInEth / BigInt(1e18))
 
-              mockV3Aggregator = await ethers.getContract("MockV3Aggregator", deployer)
-              currentTimestamp = await time.latest()
+              minScheduleHour = Number(networkConfig[chainId]["minScheduleHour"])
+              maxScheduleHour = Number(networkConfig[chainId]["maxScheduleHour"])
+              maxNumberOfMasters = Number(networkConfig[chainId]["maxNumberOfMasters"])
+
+              mockV3Aggregator = await ethers.getContract("MockV3Aggregator", accounts[0])
           })
           describe("constructor", () => {
               it("Should set the right price feed", async () => {
@@ -44,7 +48,7 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
                   )
               })
               it("Should set the right owner", async () => {
-                  expect(await studio.getOwner()).to.equal(deployer.address)
+                  expect(await studio.getOwner()).to.equal(accounts[0].address)
               })
               it("Should set the right price per hour", async () => {
                   expect(await studio.getPricePerHour()).to.equal(pricePerHour)
@@ -60,6 +64,23 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
               })
           })
           describe("bookTimeGap", () => {
+              let currentTimestamp,
+                  minScheduleTimestamp,
+                  maxScheduleTimestamp,
+                  fromTimestamp,
+                  toTimestamp,
+                  price
+              beforeEach(async () => {
+                  currentTimestamp = await time.latest()
+                  const roundTimestamp =
+                      currentTimestamp - (currentTimestamp % SECONDS_PER_DAY) + SECONDS_PER_DAY
+                  minScheduleTimestamp = roundTimestamp + minScheduleHour * SECONDS_PER_HOUR
+                  maxScheduleTimestamp = roundTimestamp + maxScheduleHour * SECONDS_PER_HOUR
+                  fromTimestamp = minScheduleTimestamp + 2 * SECONDS_PER_HOUR
+                  toTimestamp = maxScheduleTimestamp - 2 * SECONDS_PER_HOUR
+                  price =
+                      (BigInt(toTimestamp - fromTimestamp) * weiPerHour) / BigInt(SECONDS_PER_HOUR)
+              })
               it("Should revert if timestamps are invalid", async () => {
                   const tests = [
                       [
@@ -82,11 +103,6 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
                   }
               })
               it("Should revert if hours are invalid", async () => {
-                  const roundTimestamp =
-                      currentTimestamp - (currentTimestamp % SECONDS_PER_DAY) + SECONDS_PER_DAY
-                  const minScheduleTimestamp = roundTimestamp + minScheduleHour
-                  const maxScheduleTimestamp = roundTimestamp + maxScheduleHour
-
                   const tests = [
                       [
                           minScheduleTimestamp - 2 * SECONDS_PER_HOUR,
@@ -104,34 +120,36 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
                   for (const timestamps of tests) {
                       expect(
                           studio.bookTimeGap(timestamps[0], timestamps[1])
-                      ).to.be.revertedWithCustomError(studio, "Studio__InvalidTime")
+                      ).to.be.revertedWithCustomError(studio, "Studio__InvalidTimestamps")
                   }
               })
-              //   it("Should revert if not enough money", async () => {
-              //       const roundTimestamp =
-              //           currentTimestamp - (currentTimestamp % SECONDS_PER_DAY) + SECONDS_PER_DAY
-              //       const minScheduleTimestamp = roundTimestamp + minScheduleHour
-              //       const maxScheduleTimestamp = roundTimestamp + maxScheduleHour
-
-              //       const tests = [
-              //           [
-              //               minScheduleTimestamp - 2 * SECONDS_PER_HOUR,
-              //               maxScheduleTimestamp - 2 * SECONDS_PER_HOUR,
-              //           ],
-              //           [
-              //               minScheduleTimestamp + 2 * SECONDS_PER_HOUR,
-              //               maxScheduleTimestamp + 2 * SECONDS_PER_HOUR,
-              //           ],
-              //           [
-              //               minScheduleTimestamp - 2 * SECONDS_PER_HOUR,
-              //               maxScheduleTimestamp + 2 * SECONDS_PER_HOUR,
-              //           ],
-              //       ]
-              //       for (const timestamps of tests) {
-              //           expect(
-              //               studio.bookTimeGap(timestamps[0], timestamps[1])
-              //           ).to.be.revertedWithCustomError(studio, "Studio__InvalidTime")
-              //       }
-              //   })
+              it("Should revert if not enough money", async () => {
+                  expect(
+                      studio.bookTimeGap(fromTimestamp, toTimestamp)
+                  ).to.be.revertedWithCustomError(studio, "Studio__InsufficientFunding")
+                  expect(
+                      studio.bookTimeGap(fromTimestamp, toTimestamp, {
+                          value: price - 1n,
+                      })
+                  ).to.be.revertedWithCustomError(studio, "Studio__InsufficientFunding")
+              })
+              it('Should emit "TimeSlotBooked" event', async () => {
+                  await expect(studio.bookTimeGap(fromTimestamp, toTimestamp, { value: price }))
+                      .to.emit(studio, "TimeSlotBooked")
+                      .withArgs(accounts[0].address, fromTimestamp, toTimestamp)
+              })
+              it("Should set the schedule in the calendar", async () => {
+                  tx = await studio.bookTimeGap(fromTimestamp, toTimestamp, { value: price })
+                  txReceipt = await tx.wait(1)
+                  const date = new Date(fromTimestamp * 1000)
+                  const res = await studio.getScheduleFromDate(
+                      date.getFullYear(),
+                      date.getMonth() + 1,
+                      date.getDate()
+                  )
+                  BigInt.prototype.toJSON = function () {
+                      return this.toString()
+                  }
+              })
           })
       })
