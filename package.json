@@ -28,5 +28,13 @@
     "dependencies": {
         "@chainlink/contracts": "^0.8.0",
         "@quant-finance/solidity-datetime": "https://github.com/RollaProject/solidity-datetime.git"
+    },
+    "scripts": {
+        "test": "yarn hardhat test",
+        "test:staging": "yarn hardhat test --network sepolia",
+        "lint": "yarn solhint 'contracts/**/*.sol'",
+        "lint:fix": "yarn solhint 'contracts/**/*.sol' --fix",
+        "format": "yarn prettier --write .",
+        "coverage": "yarn hardhat coverage"
     }
 }
