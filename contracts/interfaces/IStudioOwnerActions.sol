@@ -11,4 +11,8 @@ interface IStudioOwnerActions {
     function setMaxScheduleHour(uint256 maxScheduleHour) external;
 
     function setMaxNumberOfMasters(uint256 maxNumberOfMasters) external;
+
+    function addMasterToWhitelist(address smaster) external;
+
+    function removeMasterFromsWhitelist(address master) external;
 }

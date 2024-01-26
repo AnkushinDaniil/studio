@@ -80,6 +80,9 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
                   toTimestamp = maxScheduleTimestamp - 2 * SECONDS_PER_HOUR
                   price =
                       (BigInt(toTimestamp - fromTimestamp) * weiPerHour) / BigInt(SECONDS_PER_HOUR)
+                  for (let i = 0; i < maxNumberOfMasters; i++) {
+                      await studio.addMasterToWhitelist(accounts[i])
+                  }
               })
               it("Should revert if timestamps are invalid", async () => {
                   const tests = [
@@ -97,7 +100,7 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
                       ],
                   ]
                   for (const timestamps of tests) {
-                      expect(
+                      await expect(
                           studio.bookTimeGap(timestamps[0], timestamps[1])
                       ).to.be.revertedWithCustomError(studio, "Studio__InvalidTimestamps")
                   }
@@ -118,13 +121,13 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
                       ],
                   ]
                   for (const timestamps of tests) {
-                      expect(
+                      await expect(
                           studio.bookTimeGap(timestamps[0], timestamps[1])
                       ).to.be.revertedWithCustomError(studio, "Studio__InvalidTimestamps")
                   }
               })
               it("Should revert if not enough money", async () => {
-                  expect(
+                  await expect(
                       studio.bookTimeGap(fromTimestamp, toTimestamp)
                   ).to.be.revertedWithCustomError(studio, "Studio__InsufficientFunding")
                   expect(
@@ -132,6 +135,27 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
                           value: price - 1n,
                       })
                   ).to.be.revertedWithCustomError(studio, "Studio__InsufficientFunding")
+              })
+              it("Should revert if master isn't in whitelist", async () => {
+                  await expect(
+                      studio
+                          .connect(accounts[maxNumberOfMasters])
+                          .bookTimeGap(fromTimestamp, toTimestamp, { value: price })
+                  ).to.be.revertedWithCustomError(studio, "Studio__NotInWhitelist")
+              })
+              it("Should revert if too many masters", async () => {
+                  studio.addMasterToWhitelist(accounts[maxNumberOfMasters])
+                  for (let i = 0; i < maxNumberOfMasters; i++) {
+                      await studio
+                          .connect(accounts[i])
+                          .bookTimeGap(fromTimestamp, toTimestamp, { value: price })
+                  }
+
+                  await expect(
+                      studio
+                          .connect(accounts[maxNumberOfMasters])
+                          .bookTimeGap(fromTimestamp, toTimestamp, { value: price })
+                  ).to.be.revertedWithCustomError(studio, "Studio__TooManyMasters")
               })
               it('Should emit "TimeSlotBooked" event', async () => {
                   await expect(studio.bookTimeGap(fromTimestamp, toTimestamp, { value: price }))

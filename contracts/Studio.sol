@@ -5,7 +5,10 @@ import "./interfaces/IStudio.sol";
 import "./libraries/CurrencyCalculation.sol";
 import "./libraries/TimeCalculation.sol";
 
+// import "hardhat/console.sol";
+
 error Studio__NotOwner();
+error Studio__NotInWhitelist();
 error Studio__InsufficientFunding();
 error Studio__InvalidTimestamps();
 error Studio__TooManyMasters();
@@ -44,6 +47,7 @@ contract Studio is IStudio {
      * @notice a concatenation of the day, month, and year in the format DDMMYYYY.
      */
     mapping(uint256 => TimestampWithMaster[]) private s_dateToTimestampsWithMaster;
+    mapping(address => bool) private s_whitelist;
 
     address private immutable OWNER;
     AggregatorV3Interface private s_priceFeed;
@@ -85,6 +89,9 @@ contract Studio is IStudio {
      * @param toTimestamp The end time of the planned session in seconds (UTC).
      */
     function bookTimeGap(uint256 fromTimestamp, uint256 toTimestamp) external payable {
+        if (!s_whitelist[msg.sender]) {
+            revert Studio__NotInWhitelist();
+        }
         if (
             !TimeCalculation.isValidTimestamps(
                 fromTimestamp,
@@ -142,33 +149,41 @@ contract Studio is IStudio {
         TimestampWithMaster[2] memory timeSlot,
         uint256 maxNumberOfMasters
     ) internal {
-        s_dateToTimestampsWithMaster[date].push();
-        s_dateToTimestampsWithMaster[date].push();
-
-        uint256 mastersCounter;
-        uint256 n = 2;
         uint256 m = daySchedule.length;
-
-        while (n > 0 && m > 0) {
-            if (daySchedule[m + n - 1].point == Pionts.finish) {
-                mastersCounter++;
-                if (mastersCounter > maxNumberOfMasters) {
-                    revert Studio__TooManyMasters();
+        s_dateToTimestampsWithMaster[date].push(timeSlot[0]);
+        s_dateToTimestampsWithMaster[date].push(timeSlot[1]);
+        if (m >= 0) {
+            uint256 mastersCounter;
+            uint256 n = 2;
+            while (n > 0 && m > 0) {
+                if (daySchedule[m - 1].timestamp <= timeSlot[n - 1].timestamp) {
+                    s_dateToTimestampsWithMaster[date][m + n - 1] = timeSlot[n - 1];
+                    if (timeSlot[n - 1].point == Pionts.finish) {
+                        mastersCounter++;
+                        if (mastersCounter > maxNumberOfMasters) {
+                            revert Studio__TooManyMasters();
+                        }
+                    } else {
+                        mastersCounter--;
+                    }
+                    n--;
+                } else {
+                    s_dateToTimestampsWithMaster[date][m + n - 1] = daySchedule[m - 1];
+                    if (daySchedule[m - 1].point == Pionts.finish) {
+                        mastersCounter++;
+                        if (mastersCounter > maxNumberOfMasters) {
+                            revert Studio__TooManyMasters();
+                        }
+                    } else {
+                        mastersCounter--;
+                    }
+                    m--;
                 }
-            } else {
-                mastersCounter--;
             }
-            if (daySchedule[m - 1].timestamp < timeSlot[n - 1].timestamp) {
-                s_dateToTimestampsWithMaster[date][m + n - 1] = timeSlot[n - 1];
-                n--;
-            } else {
-                s_dateToTimestampsWithMaster[date][m + n - 1] = daySchedule[m - 1];
-                m--;
-            }
-        }
 
-        for (uint256 i = 0; i < n; i++) {
-            s_dateToTimestampsWithMaster[date][i] = timeSlot[i];
+            for (uint256 i = 0; i < n; i++) {
+                s_dateToTimestampsWithMaster[date][i] = timeSlot[i];
+            }
         }
     }
 
@@ -216,6 +231,14 @@ contract Studio is IStudio {
 
     function setPriceFeedAddress(address priceFeed) public onlyOwner {
         s_priceFeed = AggregatorV3Interface(priceFeed);
+    }
+
+    function addMasterToWhitelist(address master) public onlyOwner {
+        s_whitelist[master] = true;
+    }
+
+    function removeMasterFromsWhitelist(address master) public onlyOwner {
+        delete (s_whitelist[master]);
     }
 
     function setPricePerHour(uint256 pricePerHour) public onlyOwner {
