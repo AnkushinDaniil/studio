@@ -1,4 +1,6 @@
-const networkConfig = {
+import { string } from "hardhat/internal/core/params/argumentTypes"
+
+const networkConfig: { [key: number]: { [key: string]: string } } = {
     31337: {
         name: "hardhat",
         usdEthPriceFeed: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
@@ -17,9 +19,9 @@ const networkConfig = {
     },
 }
 
-const developmentChains = ["hardhat", "localhost"]
-const DECIMALS = 8
-const INITIAL_ANSWER = 200000000000
+const developmentChains: string[] = ["hardhat", "localhost"]
+const DECIMALS: Number = 8
+const INITIAL_ANSWER: Number = 200000000000
 
 module.exports = {
     networkConfig,
@@ -27,3 +29,5 @@ module.exports = {
     DECIMALS,
     INITIAL_ANSWER,
 }
+
+export { networkConfig, developmentChains, DECIMALS, INITIAL_ANSWER }

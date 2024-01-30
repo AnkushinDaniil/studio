@@ -1,12 +1,13 @@
-require("@nomicfoundation/hardhat-chai-matchers")
-require("hardhat-gas-reporter")
-require("hardhat-contract-sizer")
-require("dotenv").config()
-require("solidity-coverage")
-require("@nomicfoundation/hardhat-ethers")
-require("hardhat-deploy")
-require("hardhat-deploy-ethers")
-require("@nomiclabs/hardhat-etherscan")
+import { HardhatUserConfig } from "hardhat/config"
+import "@nomicfoundation/hardhat-chai-matchers"
+import "hardhat-gas-reporter"
+import "hardhat-contract-sizer"
+import "dotenv"
+import "solidity-coverage"
+import "@nomicfoundation/hardhat-ethers"
+import "hardhat-deploy"
+import "hardhat-deploy-ethers"
+import "@nomiclabs/hardhat-etherscan"
 
 /** @type import('hardhat/config').HardhatUserConfig */
 const COINMARKETCAP_API_KEY = process.env.COINMARKETCAP_API_KEY || ""
@@ -17,7 +18,7 @@ const PRIVATE_KEY =
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || ""
 const MAINNET_RPC_URL = process.env.MAINNET_RPC_URL || ""
 
-module.exports = {
+const config: HardhatUserConfig = {
     defaultNetwork: "hardhat",
     networks: {
         hardhat: {
@@ -28,7 +29,7 @@ module.exports = {
             url: SEPOLIA_RPC_URL,
             accounts: [PRIVATE_KEY],
             chainId: 11155111,
-            blockConfirmations: 6,
+            // blockConfirmations: 6,
         },
     },
     solidity: {
@@ -59,3 +60,5 @@ module.exports = {
         timeout: 500000, // 500 seconds
     },
 }
+
+export default config
