@@ -237,6 +237,10 @@ contract Studio is IStudio {
         s_whitelist[master] = true;
     }
 
+    function isMasterInWhitelist(address master) public view returns (bool) {
+        return s_whitelist[master];
+    }
+
     function removeMasterFromsWhitelist(address master) public onlyOwner {
         delete (s_whitelist[master]);
     }

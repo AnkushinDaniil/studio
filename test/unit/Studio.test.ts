@@ -186,4 +186,42 @@ const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
                   )
               })
           })
+          describe("setters", (): void => {
+              it("Should set the right price feed", async (): Promise<void> => {
+                  await studio.setPriceFeedAddress("0x694AA1769357215DE4FAC081bf1f309aDC325306")
+                  expect(await studio.getPriceFeedAddress()).to.equal(
+                      "0x694AA1769357215DE4FAC081bf1f309aDC325306"
+                  )
+              })
+              it("Should set the right price per hour", async (): Promise<void> => {
+                  await studio.setPricePerHour("6")
+                  expect(await studio.getPricePerHour()).to.equal("6")
+              })
+              it("Should set the right min schedule hour", async (): Promise<void> => {
+                  await studio.setMinScheduleHour("10")
+                  expect(await studio.getMinScheduleHour()).to.equal("10")
+              })
+              it("Should set the right max schedule hour", async (): Promise<void> => {
+                  await studio.setMaxScheduleHour("20")
+                  expect(await studio.getMaxScheduleHour()).to.equal("20")
+              })
+              it("Should set the right max number of masters", async (): Promise<void> => {
+                  await studio.setMaxNumberOfMasters("4")
+                  expect(await studio.getMaxNumberOfMasters()).to.equal("4")
+              })
+          })
+          describe("whitelist", (): void => {
+              it("Should retern false if master was not added to whitelist", async (): Promise<void> => {
+                  expect(await studio.isMasterInWhitelist(accounts[0].address)).to.equal(false)
+              })
+              it("Should retern true if master was added to whitelist", async (): Promise<void> => {
+                  await studio.addMasterToWhitelist(accounts[0].address)
+                  expect(await studio.isMasterInWhitelist(accounts[0].address)).to.equal(true)
+              })
+              it("Should retern false if master was removed акщь whitelist", async (): Promise<void> => {
+                  await studio.addMasterToWhitelist(accounts[0].address)
+                  await studio.removeMasterFromsWhitelist(accounts[0].address)
+                  expect(await studio.isMasterInWhitelist(accounts[0].address)).to.equal(false)
+              })
+          })
       })
